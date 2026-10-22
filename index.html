@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Оқушыларды бағалау жүйесі</title>
+  <!-- Bootstrap CSS (Стильдер үшін) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- SheetJS (Excel файлдармен жұмыс істеу үшін) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body { background-color: #f8f9fa; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .card { border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    .table-input { width: 80px; text-align: center; }
+    .total-score { font-weight: bold; color: #0d6efd; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2 class="mb-4 text-center text-primary">🏫 Оқушыларды сабақта бағалау құралы</h2>
+
+  <!-- Деректерді енгізу панелі -->
+  <div class="card p-4">
+    <div class="row g-3">
+      <div class="col-md-5">
+        <label class="form-label font-weight-bold">Оқушының аты-жөнін қолдан қосу:</label>
+        <div class="input-group">
+          <input type="text" id="studentNameInput" class="form-control" placeholder="Мсалы: Әлібеков Нұрбол">
+          <button class="btn btn-primary" onclick="addStudent()">Қосу</button>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <label class="form-label font-weight-bold">Excel файлынан оқушылар тізімін жүктеу (.xlsx, .csv):</label>
+        <input type="file" id="excelFileInput" class="form-control" accept=".xlsx, .xls, .csv" onchange="importExcel(event)">
+        <small class="text-muted">Файлдың бірінші бағанында оқушы аты-жөндері болуы керек.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Бағалау кестесі -->
+  <div class="card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4>Бағалау кестесі (Максималды 10 бал)</h4>
+      <button class="btn btn-success" onclick="exportExcel()">📥 Нәтижелерді Excel-ге жүктеу</button>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover align-middle" id="evaluationTable">
+        <thead class="table-light">
+          <tr>
+            <th>№</th>
+            <th>Оқушының аты-жөні</th>
+            <th>1-тапсырма (бал)</th>
+            <th>2-тапсырма (бал)</th>
+            <th>3-тапсырма (бал)</th>
+            <th>Жиынтық балл (макс 10)</th>
+            <th>Әрекет</th>
+          </tr>
+        </thead>
+        <tbody id="studentTableBody">
+          <!-- Оқушылар қатары осы жерге динамикалы түрде қосылады -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  let students = [];
+
+  // Оқушыны қолдан қосу
+  function addStudent() {
+    const nameInput = document.getElementById('studentNameInput');
+    const name = nameInput.value.trim();
+    if (name) {
+      students.push({ name: name, task1: 0, task2: 0, task3: 0 });
+      nameInput.value = '';
+      renderTable();
+    }
+  }
+
+  // Excel-ден оқушыларды импорттау
+  function importExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      jsonData.forEach((row) => {
+        if (row[0] && typeof row[0] === 'string' && row[0].trim() !== '') {
+          students.push({ name: row[0].trim(), task1: 0, task2: 0, task3: 0 });
+        }
+      });
+      renderTable();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // Кестені экранға шығару
+  function renderTable() {
+    const tbody = document.getElementById('studentTableBody');
+    tbody.innerHTML = '';
+
+    students.forEach((student, index) => {
+      const total = (Number(student.task1) || 0) + (Number(student.task2) || 0) + (Number(student.task3) || 0);
+      
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${index + 1}</td>
+        <td><strong>${student.name}</strong></td>
+        <td><input type="number" min="0" max="10" class="form-control table-input" value="${student.task1}" onchange="updateScore(${index}, 'task1', this.value)"></td>
+        <td><input type="number" min="0" max="10" class="form-control table-input" value="${student.task2}" onchange="updateScore(${index}, 'task2', this.value)"></td>
+        <td><input type="number" min="0" max="10" class="form-control table-input" value="${student.task3}" onchange="updateScore(${index}, 'task3', this.value)"></td>
+        <td class="total-score">${total}</td>
+        <td><button class="btn btn-sm btn-outline-danger" onclick="deleteStudent(${index})">Өшіру</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Балдарды жаңарту
+  function updateScore(index, task, value) {
+    let score = parseFloat(value) || 0;
+    if (score < 0) score = 0;
+    students[index][task] = score;
+    renderTable();
+  }
+
+  // Оқушыны өшіру
+  function deleteStudent(index) {
+    students.splice(index, 1);
+    renderTable();
+  }
+
+  // Нәтижелерді Excel файлына экспорттау
+  function exportExcel() {
+    if (students.length === 0) {
+      alert("Экспорттау үшін оқушылар тізімі бос болмауы керек!");
+      return;
+    }
+
+    const exportData = students.map((s, idx) => ({
+      "№": idx + 1,
+      "Оқушының аты-жөні": s.name,
+      "1-тапсырма": s.task1,
+      "2-тапсырма": s.task2,
+      "3-тапсырма": s.task3,
+      "Жалпы балл": (Number(s.task1) || 0) + (Number(s.task2) || 0) + (Number(s.task3) || 0)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Бағалау нәтижелері");
+    XLSX.writeFile(workbook, "Сабақ_бағалау_нәтижелері.xlsx");
+  }
+</script>
+
+</body>
+</html>
